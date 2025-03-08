@@ -1,0 +1,10 @@
+{
+    "_id": "album_id_1",    
+    "artist_id": "artist_id_1", 
+    "name": "Album Name",
+    "release_date": "2024-01-01",
+    "genre": "Genre Name",
+    "cover_image": "url_or_base64_image", 
+    "description": "Description of the album"
+  }
+  

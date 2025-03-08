@@ -1,0 +1,18 @@
+{
+    "_id": "track_id_1",   
+    "album_id": "album_id_1", 
+    "artist_id": "artist_id_1", 
+    "name": "Track Name",
+    "type": "audio",        
+    "file_url": "url_to_audio_or_video", 
+    "lyrics": "Lyrics of the song (optional)", 
+    "duration": 210,   
+    "track_number": 1,      
+    "thumbnail": "url_or_base64_image", 
+    "metadata": {           
+      "bitrate": "320kbps",
+      "format": "mp3",
+      "resolution": "1080p"
+    }
+  }
+  

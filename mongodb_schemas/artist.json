@@ -1,0 +1,11 @@
+{
+    "_id": "artist_id_1",
+    "name": "Artist Name",
+    "bio": "Short biography or description of the artist",
+    "image": "url_or_base64_image",
+    "social_links": {
+      "instagram": "https://instagram.com/artist",
+      "twitter": "https://twitter.com/artist"
+    }
+}
+  
