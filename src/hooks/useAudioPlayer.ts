@@ -1,121 +1,150 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { Track } from '../types';
 
-interface AudioPlayerState {
-  currentTrackIndex: number;
+interface UseAudioPlayerReturn {
+  currentTrack: Track | null;
   isPlaying: boolean;
   volume: number;
+  progress: number;
   duration: number;
-  currentTime: number;
-}
-
-interface UseAudioPlayerReturn extends AudioPlayerState {
-  playPauseTrack: () => void;
-  nextTrack: () => void;
-  prevTrack: () => void;
-  setVolume: (value: number) => void;
-  seekTo: (time: number) => void;
-  currentTrack: Track | undefined;
+  togglePlay: () => void;
+  handleVolumeChange: (event: Event, newValue: number | number[]) => void;
+  handleProgressChange: (event: Event, newValue: number | number[]) => void;
+  playPreviousTrack: () => void;
+  playNextTrack: () => void;
 }
 
 const useAudioPlayer = (tracks: Track[]): UseAudioPlayerReturn => {
-  const audioRef = useRef<HTMLAudioElement>(new Audio());
-  const [state, setState] = useState<AudioPlayerState>({
-    currentTrackIndex: 0,
-    isPlaying: false,
-    volume: 100,
-    duration: 0,
-    currentTime: 0,
-  });
-
-  const loadTrack = useCallback((index: number) => {
-    const track = tracks[index];
-    if (!track) return;
-
-    audioRef.current.src = track.path;
-    audioRef.current.load();
-    setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
-  }, [tracks]);
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(0.5);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const progressIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const audio = audioRef.current;
+    audioRef.current = new Audio();
+    audioRef.current.volume = volume;
 
-    const handleTimeUpdate = () => {
-      setState(prev => ({ ...prev, currentTime: audio.currentTime }));
+    return () => {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
     };
+  }, []);
 
-    const handleDurationChange = () => {
-      setState(prev => ({ ...prev, duration: audio.duration }));
+  useEffect(() => {
+    if (!audioRef.current || tracks.length === 0) return;
+
+    const audio = audioRef.current;
+    audio.src = tracks[currentTrackIndex].path;
+    
+    const handleLoadedMetadata = () => {
+      setDuration(audio.duration);
     };
 
     const handleEnded = () => {
-      if (state.currentTrackIndex < tracks.length - 1) {
-        setState(prev => ({ ...prev, currentTrackIndex: prev.currentTrackIndex + 1 }));
-      } else {
-        setState(prev => ({ ...prev, isPlaying: false, currentTime: 0 }));
-      }
+      playNextTrack();
     };
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('durationchange', handleDurationChange);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('ended', handleEnded);
 
+    if (isPlaying) {
+      audio.play().catch(error => {
+        console.error('Error playing audio:', error);
+        setIsPlaying(false);
+      });
+    }
+
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('durationchange', handleDurationChange);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
-      audio.pause();
-      audio.src = '';
     };
-  }, [tracks.length, state.currentTrackIndex]);
+  }, [currentTrackIndex, tracks]);
 
   useEffect(() => {
-    if (tracks.length > 0) {
-      loadTrack(state.currentTrackIndex);
-    }
-  }, [tracks, state.currentTrackIndex, loadTrack]);
+    if (!audioRef.current) return;
 
-  const playPauseTrack = useCallback(() => {
-    if (state.isPlaying) {
+    if (isPlaying) {
+      progressIntervalRef.current = window.setInterval(() => {
+        if (audioRef.current) {
+          setProgress(audioRef.current.currentTime);
+        }
+      }, 1000);
+    } else {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+    }
+
+    return () => {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
       audioRef.current.pause();
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(error => {
+        console.error('Error playing audio:', error);
+      });
     }
-    setState(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
-  }, [state.isPlaying]);
+    setIsPlaying(!isPlaying);
+  };
 
-  const nextTrack = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      currentTrackIndex: (prev.currentTrackIndex + 1) % tracks.length,
-    }));
-  }, [tracks.length]);
+  const handleVolumeChange = (event: Event, newValue: number | number[]) => {
+    if (!audioRef.current) return;
+    
+    const newVolume = Array.isArray(newValue) ? newValue[0] : newValue;
+    const clampedVolume = Math.max(0, Math.min(1, newVolume));
+    audioRef.current.volume = clampedVolume;
+    setVolume(clampedVolume);
+  };
 
-  const prevTrack = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      currentTrackIndex: (prev.currentTrackIndex - 1 + tracks.length) % tracks.length,
-    }));
-  }, [tracks.length]);
+  const handleProgressChange = (event: Event, newValue: number | number[]) => {
+    if (!audioRef.current) return;
+    
+    const newProgress = Array.isArray(newValue) ? newValue[0] : newValue;
+    const clampedProgress = Math.max(0, Math.min(duration, newProgress));
+    audioRef.current.currentTime = clampedProgress;
+    setProgress(clampedProgress);
+  };
 
-  const setVolume = useCallback((value: number) => {
-    audioRef.current.volume = value / 100;
-    setState(prev => ({ ...prev, volume: value }));
-  }, []);
+  const playPreviousTrack = () => {
+    if (tracks.length === 0) return;
+    const newIndex = currentTrackIndex === 0 ? tracks.length - 1 : currentTrackIndex - 1;
+    setCurrentTrackIndex(newIndex);
+  };
 
-  const seekTo = useCallback((time: number) => {
-    audioRef.current.currentTime = time;
-    setState(prev => ({ ...prev, currentTime: time }));
-  }, []);
+  const playNextTrack = () => {
+    if (tracks.length === 0) return;
+    const newIndex = currentTrackIndex === tracks.length - 1 ? 0 : currentTrackIndex + 1;
+    setCurrentTrackIndex(newIndex);
+  };
 
   return {
-    ...state,
-    playPauseTrack,
-    nextTrack,
-    prevTrack,
-    setVolume,
-    seekTo,
-    currentTrack: tracks[state.currentTrackIndex],
+    currentTrack: tracks.length > 0 ? tracks[currentTrackIndex] : null,
+    isPlaying,
+    volume,
+    progress,
+    duration,
+    togglePlay,
+    handleVolumeChange,
+    handleProgressChange,
+    playPreviousTrack,
+    playNextTrack,
   };
 };
 

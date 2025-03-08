@@ -1,9 +1,9 @@
 export interface Track {
-  id?: string;
+  _id: string;
   name: string;
   artist: string;
-  image: string;
   path: string;
+  image?: string;
   albumId?: string;
   artistId?: string;
   type?: string;

@@ -1,44 +1,66 @@
 import React, { useState } from 'react';
 import { Box, Button, TextField, Typography, CircularProgress, Alert } from '@mui/material';
 import { CloudUpload } from '@mui/icons-material';
-import { UploadFormData } from '../types';
-
-// Maximum file sizes in bytes (5MB for audio, 2MB for images)
-const MAX_AUDIO_SIZE = 5 * 1024 * 1024;
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 
 interface UploadFormProps {
   onUploadComplete?: () => void;
 }
 
-const INITIAL_FORM_STATE: UploadFormData = {
+interface FormData {
+  name: string;
+  artist: string;
+  trackFile: File | null;
+  imageFile: File | null;
+}
+
+const INITIAL_FORM_STATE: FormData = {
   name: '',
   artist: '',
   trackFile: null,
   imageFile: null,
 };
 
+// Maximum file sizes in bytes
+const MAX_AUDIO_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
+
 const FileUploadButton: React.FC<{
   id: string;
-  name: string;
   accept: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange: (file: File | null) => void;
   label: string;
-  variant: 'contained' | 'outlined';
   required?: boolean;
-  file: File | null;
   maxSize: number;
-}> = ({ id, name, accept, onChange, label, variant, required, file, maxSize }) => {
+}> = ({ id, accept, onChange, label, required, maxSize }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      if (files[0].size > maxSize) {
+    const file = e.target.files?.[0] || null;
+    
+    if (file) {
+      // Check file size
+      if (file.size > maxSize) {
         alert(`File is too large. Maximum size is ${maxSize / (1024 * 1024)}MB`);
-        e.target.value = ''; // Reset the input
+        e.target.value = '';
+        onChange(null);
         return;
       }
-      onChange(e);
+
+      // Check file type
+      if (accept.startsWith('audio/') && !file.type.startsWith('audio/')) {
+        alert('Please select an audio file');
+        e.target.value = '';
+        onChange(null);
+        return;
+      }
+
+      if (accept.startsWith('image/') && !file.type.startsWith('image/')) {
+        alert('Please select an image file');
+        e.target.value = '';
+        onChange(null);
+        return;
+      }
     }
+    
+    onChange(file);
   };
 
   return (
@@ -47,14 +69,13 @@ const FileUploadButton: React.FC<{
         accept={accept}
         style={{ display: 'none' }}
         id={id}
-        name={name}
         type="file"
         onChange={handleChange}
         required={required}
       />
       <label htmlFor={id}>
         <Button
-          variant={variant}
+          variant="outlined"
           component="span"
           startIcon={<CloudUpload />}
           fullWidth
@@ -62,17 +83,13 @@ const FileUploadButton: React.FC<{
           {label}
         </Button>
       </label>
-      {file && (
-        <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-          Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)}MB)
-        </Typography>
-      )}
+      {/* File info display will be handled by parent component */}
     </Box>
   );
 };
 
 const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
-  const [formData, setFormData] = useState<UploadFormData>(INITIAL_FORM_STATE);
+  const [formData, setFormData] = useState<FormData>(INITIAL_FORM_STATE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,14 +101,11 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
     }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, files } = e.target;
-    if (files && files.length > 0) {
-      setFormData(prev => ({
-        ...prev,
-        [name]: files[0],
-      }));
-    }
+  const handleFileChange = (field: 'trackFile' | 'imageFile') => (file: File | null) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: file,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,12 +114,15 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
     setError(null);
 
     try {
+      if (!formData.trackFile) {
+        throw new Error('Please select an audio file');
+      }
+
       const formDataToSend = new FormData();
       formDataToSend.append('name', formData.name);
       formDataToSend.append('artist', formData.artist);
-      if (formData.trackFile) {
-        formDataToSend.append('file', formData.trackFile);
-      }
+      formDataToSend.append('file', formData.trackFile);
+      
       if (formData.imageFile) {
         formDataToSend.append('image', formData.imageFile);
       }
@@ -116,15 +133,15 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || 'Upload failed');
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to upload track');
       }
 
       setFormData(INITIAL_FORM_STATE);
       onUploadComplete?.();
     } catch (error) {
       console.error('Error uploading:', error);
-      setError(error instanceof Error ? error.message : 'Failed to upload track. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to upload track');
     } finally {
       setLoading(false);
     }
@@ -135,11 +152,13 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
       <Typography variant="h5" gutterBottom>
         Upload New Track
       </Typography>
+      
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
+
       <form onSubmit={handleSubmit}>
         <TextField
           fullWidth
@@ -159,27 +178,34 @@ const UploadForm: React.FC<UploadFormProps> = ({ onUploadComplete }) => {
           margin="normal"
           required
         />
+
         <FileUploadButton
-          id="trackFile"
-          name="trackFile"
+          id="track-file"
           accept="audio/*"
-          onChange={handleFileChange}
-          label="Upload Track File (Max 5MB)"
-          variant="contained"
+          onChange={handleFileChange('trackFile')}
+          label="Select Audio File (Max 5MB)"
           required
-          file={formData.trackFile}
           maxSize={MAX_AUDIO_SIZE}
         />
+        {formData.trackFile && (
+          <Typography variant="caption" display="block" sx={{ ml: 1 }}>
+            Selected: {formData.trackFile.name} ({(formData.trackFile.size / (1024 * 1024)).toFixed(2)}MB)
+          </Typography>
+        )}
+
         <FileUploadButton
-          id="imageFile"
-          name="imageFile"
+          id="image-file"
           accept="image/*"
-          onChange={handleFileChange}
-          label="Upload Cover Image (Optional, Max 2MB)"
-          variant="outlined"
-          file={formData.imageFile}
+          onChange={handleFileChange('imageFile')}
+          label="Select Cover Image (Optional, Max 2MB)"
           maxSize={MAX_IMAGE_SIZE}
         />
+        {formData.imageFile && (
+          <Typography variant="caption" display="block" sx={{ ml: 1 }}>
+            Selected: {formData.imageFile.name} ({(formData.imageFile.size / (1024 * 1024)).toFixed(2)}MB)
+          </Typography>
+        )}
+
         <Button
           type="submit"
           variant="contained"
